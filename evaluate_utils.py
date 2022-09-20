@@ -1,24 +1,32 @@
 from abc import abstractmethod
 import logging
-from scapy.all import sniff, TCPSession, PcapReader
+from scapy.all import sniff, wrpcap
 from firewall import check_xss
+import time
 
 
 class Evaluate:
-    SUMMARY_FREQ = 1000
+    SUMMARY_FREQ = 50000
 
-    def __init__(self, packet_file):
-        self.packet_file = packet_file
+    def __init__(self, filenames):
+        self.filenames = filenames
         self.count = 0
         self.detected = 0
 
     def evaluate(self):
-        sniff(
-            offline=self.packet_file,
-            prn=self.packet_callback,
-            store=0,
-        )
+        for filename in self.filenames:
+            try:
+                with open(filename, "rb") as pcap_file:
+                    logging.info(f"Reading packets from {filename}")
+                    sniff(
+                        offline=pcap_file,
+                        prn=self.packet_callback,
+                        store=0,
+                    )
+            except:
+                continue
 
+    @abstractmethod
     def packet_callback(self, packet):
         src = check_xss(packet)
         if src:
@@ -26,6 +34,8 @@ class Evaluate:
         self.count += 1
         if src or self.count % self.SUMMARY_FREQ == 0:
             self.summary()
+        if src:
+            return src
 
     @abstractmethod
     def summary(self):
@@ -33,6 +43,18 @@ class Evaluate:
 
 
 class Evaluate_FP(Evaluate):
+    def __init__(self, filenames):
+        timestr_safe = time.strftime("%Y-%m-%d-%H-%M-%S")
+        self.fp_name = f"fp_{timestr_safe}"
+        super().__init__(filenames)
+
+    def packet_callback(self, packet):
+        result = super().packet_callback(packet)
+        if result:
+            wrpcap(self.fp_name + ".pcap", packet, append=True)
+            with open(self.fp_name + ".txt",'a') as write_obj:
+                write_obj.write(result.payload)
+
     def summary(self):
         print(f"FP {self.detected}/{self.count} packets")
 

@@ -5,6 +5,12 @@ from scapy.all import TCP, Raw, IP
 from scapy.layers.http import HTTPRequest
 
 
+class ResultPacket:
+    def __init__(self, src, payload, packet) -> None:
+        self.src = src
+        self.payload = payload
+
+
 REGEX_STRINGS = [
     # "((\%3C)|<)((\%2F)|\/)*[a-z0-9\%]+((\%3E)|>)",
     # "((\%3C)|<)((\%69)|i|(\%49))((\%6D)|m|(\%4D))((\%67)|g|(\%47))[^\n]+((\%3E)|>)",
@@ -41,7 +47,6 @@ def check_xss(p):
     except:
         return False
 
-    
     xss_matched = match_regex(h)
     if not xss_matched:
         return False
@@ -50,7 +55,7 @@ def check_xss(p):
     logging.info("XSS detected")
     logging.info("Source ip:- " + src_ip)
     logging.info("Webpage:- " + webpage)
-    return src_ip
+    return ResultPacket(src_ip, h, p)
 
 
 def handle_packet(controller):
