@@ -1,7 +1,9 @@
 from curses import nonl
 import logging
+import os
 import re
-from scapy.all import TCP, Raw, IP
+import time
+from scapy.all import TCP, Raw, IP, wrpcap
 from scapy.layers.http import HTTPRequest
 
 
@@ -55,16 +57,29 @@ def check_xss(packet):
     logging.info("XSS detected")
     logging.info("Source ip:- " + src_ip)
     logging.info("Webpage:- " + webpage)
-    return ResultPacket(src_ip, h, packet)
-
+    return ResultPacket(src_ip, packet)
 
 
 class SniffHandler:
-    def __init__(self,controller,should_block):
-        self.controller=controller
-        self.should_block=should_block
-    def handle_packet(self,packet):
-        result=check_xss(packet)
+    LOG_FOLDER = "logs"
+
+    def __init__(self, controller, should_block, should_log):
+        self.controller = controller
+        self.should_block = should_block
+        self.should_log = should_log
+        if self.should_log:
+            self.timestr_safe = time.strftime("log_%Y-%m-%d-%H-%M-%S")
+            if not os.path.exists(self.LOG_FOLDER):
+                os.makedirs(self.LOG_FOLDER)
+
+    def handle_packet(self, packet):
+        result = check_xss(packet)
         if result:
             if self.controller and self.should_block:
                 self.controller.block(result.src)
+            if self.should_log:
+                wrpcap(
+                    os.path.join(self.LOG_FOLDER, self.timestr_safe + ".pcap"),
+                    packet,
+                    append=True,
+                )

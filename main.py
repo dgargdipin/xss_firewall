@@ -2,7 +2,7 @@ import sys
 import argparse
 from scapy.all import sniff, TCPSession, load_layer
 from connection import Connection
-from firewall import SniffHandler, check_xss, handle_packet,
+from firewall import SniffHandler
 import logging
 
 load_layer("http")
@@ -19,16 +19,23 @@ def get_args():
     parser = argparse.ArgumentParser(description="XSS attack detector")
     parser.add_argument("iface", type=str, help="Network interface to sniff on")
     parser.add_argument("-caddr", type=str, help="IP addr of controller")
-    parser.add_argument("-cport", type=str, help="Port on which the controller is working")
-    parser.add_argument("-b","--block", action='store_true',help='Enable blocking intruders')
+    parser.add_argument(
+        "-cport", type=str, help="Port on which the controller is working"
+    )
+    parser.add_argument(
+        "-b", "--block", action="store_true", help="Enable blocking intruders"
+    )
+    parser.add_argument(
+        "-l", "--log", action="store_true", help="Enable logging of positives"
+    )
     args = parser.parse_args()
-    return args.iface,args.caddr,args.cport,args.block
+    return args.iface, args.caddr, args.cport, args.block, args.log
 
 
 def main():
-    iface,controller_ip,controller_port,should_block=get_args()
-    controller_conn=Connection.get_connection(controller_ip,controller_port)
-    sniff_handler=SniffHandler(controller_conn,should_block)
+    iface, controller_ip, controller_port, should_block, should_log = get_args()
+    controller_conn = Connection.get_connection(controller_ip, controller_port)
+    sniff_handler = SniffHandler(controller_conn, should_block, should_log)
     sniff(session=TCPSession, prn=sniff_handler.handle_packet, iface=iface)
 
 
