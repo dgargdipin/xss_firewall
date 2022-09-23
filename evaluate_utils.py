@@ -52,8 +52,6 @@ class Evaluate_FP(Evaluate):
         result = super().packet_callback(packet)
         if result:
             wrpcap(self.fp_name + ".pcap", packet, append=True)
-            with open(self.fp_name + ".txt",'a') as write_obj:
-                write_obj.write(result.packet)
             del result
 
     def summary(self):
