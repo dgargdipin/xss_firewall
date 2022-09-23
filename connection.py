@@ -53,6 +53,13 @@ class Connection:
         self.addr = addr
         self.port = port
         self.dpid=dpid
+    
+    @classmethod
+    def get_connection(cls,addr,port):
+        if not (addr and port):
+            return None
+        return cls(addr,port)
+        
 
     def block(self, ip):
         logging.info(f"Sending request to block {ip}")
@@ -69,3 +76,4 @@ class Connection:
         logging.debug(f"GET FLOW ENTRIES RESPONSE: {r.text}")
         return r.json()
     pass
+

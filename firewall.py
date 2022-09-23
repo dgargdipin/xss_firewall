@@ -6,9 +6,9 @@ from scapy.layers.http import HTTPRequest
 
 
 class ResultPacket:
-    def __init__(self, src, payload, packet) -> None:
+    def __init__(self, src, packet) -> None:
         self.src = src
-        self.payload = payload
+        self.packet = packet
 
 
 REGEX_STRINGS = [
@@ -27,15 +27,15 @@ def match_regex(payload):
     return False
 
 
-def check_xss(p):
-    if not p or not TCP in p:
+def check_xss(packet):
+    if not packet or not TCP in packet:
         return False
 
-    if HTTPRequest in p:
-        http_layer = p[HTTPRequest]
-    elif Raw in p:
+    if HTTPRequest in packet:
+        http_layer = packet[HTTPRequest]
+    elif Raw in packet:
         try:
-            http_layer = HTTPRequest(p[Raw].load)
+            http_layer = HTTPRequest(packet[Raw].load)
         except:
             return False
     else:
@@ -51,18 +51,20 @@ def check_xss(p):
     if not xss_matched:
         return False
     webpage = url[: url.find("?")]
-    src_ip = str(p[IP].src)
+    src_ip = str(packet[IP].src)
     logging.info("XSS detected")
     logging.info("Source ip:- " + src_ip)
     logging.info("Webpage:- " + webpage)
-    return ResultPacket(src_ip, h, p)
+    return ResultPacket(src_ip, h, packet)
 
 
-def handle_packet(controller):
-    def _handle_packet(p):
-        nonlocal controller
-        src = check_xss(p)
-        if src:
-            controller.block(src)
 
-    return _handle_packet
+class SniffHandler:
+    def __init__(self,controller,should_block):
+        self.controller=controller
+        self.should_block=should_block
+    def handle_packet(self,packet):
+        result=check_xss(packet)
+        if result:
+            if self.controller and self.should_block:
+                self.controller.block(result.src)
