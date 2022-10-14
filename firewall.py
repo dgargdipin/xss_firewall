@@ -7,9 +7,10 @@ from scapy.layers.http import HTTPRequest
 
 
 class ResultPacket:
-    def __init__(self, src, packet) -> None:
+    def __init__(self, src, packet, fields) -> None:
         self.src = src
         self.packet = packet
+        self.fields = fields
 
 
 REGEX_STRINGS = [
@@ -28,27 +29,40 @@ def match_regex(payload):
     return False
 
 
-def check_xss(packet):
+def get_http_request(packet):
     if not packet or not TCP in packet:
-        return False
+        return None
 
     if HTTPRequest in packet:
-        http_layer = packet[HTTPRequest]
+        return packet[HTTPRequest]
     elif Raw in packet:
         try:
             http_layer = HTTPRequest(packet[Raw].load)
+            return http_layer
         except:
-            return False
+            return None
     else:
-        return False
+        return None
 
+
+def get_http_info(packet):
+    http_request = get_http_request(packet)
+    if not http_request:
+        return None
     try:
-        h = "{0[Path]}".format(http_layer.fields)
-        url = http_layer.Host.decode() + http_layer.Path.decode()
+        fields = "{0[Path]}".format(http_request.fields)
+        url = http_request.Host.decode() + http_request.Path.decode()
+        return fields, url
     except:
-        return False
+        return None
 
-    xss_matched = match_regex(h)
+
+def check_xss(packet):
+    http_info = get_http_info(packet)
+    if not http_info:
+        return False
+    fields, url = http_info
+    xss_matched = match_regex(fields)
     if not xss_matched:
         return False
     webpage = url[: url.find("?")]
@@ -56,7 +70,7 @@ def check_xss(packet):
     logging.info("XSS detected")
     logging.info("Source ip:- " + src_ip)
     logging.info("Webpage:- " + webpage)
-    return ResultPacket(src_ip, packet)
+    return ResultPacket(src_ip, packet, fields)
 
 
 class SniffHandler:
