@@ -50,9 +50,10 @@ def get_http_info(packet):
     if not http_request:
         return None
     try:
+        method = http_request.Method.decode()
         fields = "{0[Path]}".format(http_request.fields)
         url = http_request.Host.decode() + http_request.Path.decode()
-        return fields, url
+        return fields, url, method
     except:
         return None
 
@@ -61,8 +62,12 @@ def check_xss(packet):
     http_info = get_http_info(packet)
     if not http_info:
         return False
-    fields, url = http_info
-    xss_matched = match_regex(fields)
+    fields, url, method = http_info
+    xss_matched = None
+    if method == "GET":
+        xss_matched = match_regex(fields)
+    elif method == "POST" and Raw in packet :
+        xss_matched = match_regex(packet[Raw].load.decode())
     if not xss_matched:
         return False
     webpage = url[: url.find("?")]

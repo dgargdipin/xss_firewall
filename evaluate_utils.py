@@ -8,7 +8,7 @@ import urllib.parse
 
 
 class Evaluate:
-    SUMMARY_FREQ = 50000
+    SUMMARY_FREQ = 500
 
     def __init__(self, filenames):
         self.filenames = filenames
@@ -25,7 +25,8 @@ class Evaluate:
                         prn=self.packet_callback,
                         store=0,
                     )
-            except:
+            except Exception as e:
+                print(e)
                 continue
 
     @abstractmethod
@@ -61,7 +62,7 @@ class Evaluate_FP(Evaluate):
             del result
 
     def summary(self):
-        print(f"FP {len(self.detected)}/{self.count} packets")
+        print(f"FP {self.detected}/{self.count} packets")
 
 
 class Evaluate_Positives(Evaluate):
