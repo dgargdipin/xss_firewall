@@ -1,6 +1,6 @@
 import argparse
 import logging
-from evaluate_utils import Evaluate_FP, Evaluate_Positives, evaluate_csv
+from evaluate_utils import Counter, Evaluate_FP, Evaluate_Positives, evaluate_csv
 
 # logging.basicConfig(level=logging.INFO)
 
@@ -20,6 +20,8 @@ def main():
         Evaluate_Positives(args.filenames, args.count).evaluate()
     elif args.mode == "csv":
         evaluate_csv(args.filenames[0])
+    elif args.mode == "count":
+        Counter(args.filenames[0])
 
 
 if __name__ == "__main__":
