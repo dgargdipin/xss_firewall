@@ -7,18 +7,6 @@ from scapy.all import TCP, Raw, IP, wrpcap
 from scapy.layers.http import HTTPRequest
 import hyperscan
 
-db = hyperscan.Database()
-patterns = (
-    # expression,  id, flags
-    (rb"fo+", 0, 0),
-    (rb"^foobar$", 1, hyperscan.HS_FLAG_CASELESS),
-    (rb"BAR", 2, hyperscan.HS_FLAG_CASELESS | hyperscan.HS_FLAG_SOM_LEFTMOST),
-)
-expressions, ids, flags = zip(*patterns)
-db.compile(expressions=expressions, ids=ids, elements=len(patterns), flags=flags)
-print(db.info().decode())
-# Version: 5.1.1 Features: AVX2 Mode: BLOCK
-
 
 class ResultPacket:
     def __init__(self, src, packet, fields) -> None:
@@ -75,30 +63,30 @@ URL_REPLACEMENTS = {
     ",": "(\%2C)",
     "\)": "(\%29)",
 }
-REGEX_ACCURATE_STRING_ORIGINAL = (
-    r"((alert|on\w+|function\s+\w+)\s*\(\s*(['+\d\w](,?\s*['+\d\w]*)*)*\s*\))"
-)
-REGEX_ACCURATE_STRING=REGEX_ACCURATE_STRING_ORIGINAL
-print(REGEX_ACCURATE_STRING)
+REGEX_ACCURATE_STRING_ORIGINAL = r"(alert|on\w+|function(\%20|\%09|\%0A|\+)+\w+)(\%20|\%09|\%0A|\+)*(\%28)(\%20|\%09|\%0A|\+)*((\%27|\%2B|\d|\w)((\%2C)?(\%20|\%09|\%0A|\+)*(\%27|\%2B|\d|\w)*)*)*(\%20|\%09|\%0A|\+)*\%29"
+REGEX_ACCURATE_STRING = REGEX_ACCURATE_STRING_ORIGINAL
+# print(REGEX_ACCURATE_STRING)
 
-for key in URL_REPLACEMENTS:
-    REGEX_ACCURATE_STRING = REGEX_ACCURATE_STRING.replace(key, URL_REPLACEMENTS[key])
-    print(REGEX_ACCURATE_STRING)
-print(REGEX_ACCURATE_STRING)
+# for key in URL_REPLACEMENTS:
+#     REGEX_ACCURATE_STRING = REGEX_ACCURATE_STRING.replace(key, URL_REPLACEMENTS[key])
+# print(REGEX_ACCURATE_STRING)
+# print(REGEX_ACCURATE_STRING)
 REGEX_ACCURATE_ARR = [REGEX_ACCURATE_STRING]
-REGEX_FAST = ["\%3C(?:[^>=]|='[^']*'|=\"[^\"]*\"|=[^'\"][^\\s>]*)*"]
+REGEX_ACCURATE_STRING_PATTERN = re.compile(REGEX_ACCURATE_STRING.encode())
 
-
+# REGEX_FAST = ["\%3C(?:[^>=]|='[^']*'|=\"[^\"]*\"|=[^'\"][^\\s>]*)*"]
 # @timeout(seconds=1)
 def accurate_regex_decode(payload):
     payload = urllib.parse.unquote_plus(payload)
-    return re.search(REGEX_ACCURATE_STRING, payload)
+    return REGEX_ACCURATE_STRING_PATTERN.search(payload)
 
 
 def accurate_regex_no_decode(payload):
     # print(payload)
-    return re.search(REGEX_ACCURATE_STRING, payload)
+    return REGEX_ACCURATE_STRING_PATTERN.search(payload)
 
+
+db = hyperscan.Database()
 
 hyperscan_patterns = [
     # expression,  id, flags
@@ -109,8 +97,10 @@ hyperscan_patterns = [
     )
     for id, pattern in enumerate(REGEX_ACCURATE_ARR)
 ]
-expressions, ids, flags = zip(*patterns)
-db.compile(expressions=expressions, ids=ids, elements=len(patterns), flags=flags)
+expressions, ids, flags = zip(*hyperscan_patterns)
+db.compile(
+    expressions=expressions, ids=ids, elements=len(hyperscan_patterns), flags=flags
+)
 
 matches_hyperscan = 0
 
@@ -131,7 +121,7 @@ def fast_regex(payload):
 def _hyperscan_regex(payload):
     global matches_hyperscan
     prev_value = matches_hyperscan
-    print(payload)
+    # print(payload)
     db.scan(payload, match_event_handler=on_match_hyperscan)
     return matches_hyperscan != prev_value
 
@@ -154,9 +144,8 @@ def match_regex(payload):
     #     print("EXCEPTION")
     #     result = fast_regex(payload)
     # result = accurate_regex_decode(payload)
+    # print("PAYLOAD", payload)
     result = accurate_regex_no_decode(payload)
-    if result:
-        print("XSS")
     return result
 
 
@@ -168,8 +157,6 @@ def match_regex_csv(payload):
     #     print("EXCEPTION")
     #     result = fast_regex(payload)
     result = accurate_regex_no_decode(payload)
-    if result:
-        print("XSS")
     return result
 
 
@@ -184,6 +171,7 @@ def get_http_request(packet):
             http_layer = HTTPRequest(packet[Raw].load)
             return http_layer
         except:
+            raise
             return None
     else:
         return None
@@ -194,11 +182,14 @@ def get_http_info(packet):
     if not http_request:
         return None
     try:
-        method = http_request.Method.decode()
-        fields = "{0[Path]}".format(http_request.fields)
-        url = http_request.Host.decode() + http_request.Path.decode()
-        return fields, url, method
+        method = http_request.Method
+        # path = http_request.fields["Path"]
+        path = http_request.Path
+        host = http_request.Host
+        url = host + path
+        return path, url, method
     except:
+        raise
         return None
 
 
@@ -207,23 +198,25 @@ import urllib
 
 def check_xss(packet):
     http_info = get_http_info(packet)
+
     if not http_info:
         return False
-    fields, url, method = http_info
-    # fields = urllib.parse.unquote_plus(fields[2:-1])
+    path, url, method = http_info
     xss_matched = None
-    if method == "GET":
-        xss_matched = match_regex(fields[2:-1])
-    elif method == "POST" and Raw in packet:
+    if method == b"GET":
+        xss_matched = match_regex(path)
+        # print("matched",xss_matched)
+    elif method == b"POST" and Raw in packet:
         xss_matched = match_regex(packet[Raw].load)
     if not xss_matched:
         return False
+    url = url.decode()
     webpage = url[: url.find("?")]
     src_ip = str(packet[IP].src)
     logging.info("XSS detected")
     logging.info("Source ip:- " + src_ip)
     logging.info("Webpage:- " + webpage)
-    return ResultPacket(src_ip, packet, fields)
+    return ResultPacket(src_ip, packet, path)
 
 
 class SniffHandler:

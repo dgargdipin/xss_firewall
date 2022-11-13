@@ -2,9 +2,10 @@ from abc import abstractmethod
 import logging
 import os
 from scapy.all import sniff, wrpcap
-from firewall import check_xss, get_http_info, match_regex_csv,accurate_regex_no_decode
+from firewall import check_xss, get_http_info, match_regex_csv, accurate_regex_no_decode
 import time
 import urllib.parse
+import pandas as pd
 
 
 class Evaluate:
@@ -14,6 +15,7 @@ class Evaluate:
         self.filenames = filenames
         self.count = 0
         self.detected = 0
+        self.times = []
 
     def evaluate(self):
         for filename in self.filenames:
@@ -27,11 +29,15 @@ class Evaluate:
                     )
             except Exception as e:
                 print(e)
+                raise
                 continue
+        self.final_callback()
 
     @abstractmethod
     def packet_callback(self, packet):
+        start = time.time()
         src = check_xss(packet)
+        self.times.append(time.time() - start)
         if src:
             self.detected += 1
         self.count += 1
@@ -44,8 +50,8 @@ class Evaluate:
     def summary(self):
         pass
 
-    @abstractmethod
     def final_callback(self):
+        evaluate_fn_calls(self.times)
         pass
 
 
@@ -62,6 +68,7 @@ class Evaluate_FP(Evaluate):
                 wrpcap(self.fp_name + ".pcap", packet, append=True)
                 del result
         except:
+            raise
             return
 
     def summary(self):
@@ -81,11 +88,10 @@ class Evaluate_Positives(Evaluate):
     def packet_callback(self, packet):
         result = super().packet_callback(packet)
         http_res = get_http_info(packet)
-        if http_res:
-            payload, url,method = http_res
-            payload = urllib.parse.unquote_plus(payload[2:-1])
-            with open(self.payload_log_path, "a") as f:
-                f.write(payload + "\n")
+        # if http_res:
+        #     payload, url,method = http_res
+        #     with open(self.payload_log_path, "a") as f:
+        #         f.write(payload + "\n")
         if result:
             if result.fields not in self.payload_history:
                 self.payload_history.add(result.fields)
@@ -125,19 +131,31 @@ def predict_bleach(payload):
     return payload == bleach.clean(payload, strip=True)
 
 
+def evaluate_fn_calls(times):
+    times = pd.Series(times)
+    print(times.describe().apply("{0:.6f}".format))
+    print("Total time", times.sum())
+
+
 def evaluate_csv(csv_file_path):
     import csv
     import urllib.parse
+    import time
 
     false_p, true_p, false_n, true_n = 0, 0, 0, 0
     detections = 0
+    times = []
     with open(csv_file_path) as csv_file:
         data = csv.DictReader(csv_file)
         for row in data:
             payload = row["Sentence"]
+            # print(urllib.parse.quote(payload))
             label = bool(eval(row["Label"]))
-            
-            prediction = accurate_regex_no_decode(urllib.parse.quote(payload))
+            encoded_payload = urllib.parse.quote(payload).encode()
+            start = time.time()
+            prediction = accurate_regex_no_decode(encoded_payload)
+            times.append(time.time() - start)
+            # evaluate_fn_calls(times)
             # prediction = match_regex_csv(payload)
             # prediction = predict_bleach(payload)
             if prediction:
@@ -149,18 +167,19 @@ def evaluate_csv(csv_file_path):
             elif not prediction and not label:
                 true_n += 1
             elif not prediction and label:
-                print(payload)
-                print()
-                print(urllib.parse.quote(payload))
-                print()
-                print()
-                print()
+                # print(payload)
+                # print()
+                # print(urllib.parse.quote(payload))
+                # print()
+                # print()
+                # print()
                 false_n += 1
         print("False Positives", false_p)
         print("True Positives", true_p)
         print("False Negatives", false_n)
         print("True Negatives", true_n)
         # print(detections)
+        evaluate_fn_calls(times)
 
 
 class Counter:
