@@ -63,7 +63,7 @@ URL_REPLACEMENTS = {
     ",": "(\%2C)",
     "\)": "(\%29)",
 }
-REGEX_ACCURATE_STRING_ORIGINAL = r"(alert|on\w+|function(\%20|\%09|\%0A|\+)+\w+)(\%20|\%09|\%0A|\+)*(\%28)(\%20|\%09|\%0A|\+)*((\%27|\%2B|\d|\w)((\%2C)?(\%20|\%09|\%0A|\+)*(\%27|\%2B|\d|\w)*)*)*(\%20|\%09|\%0A|\+)*\%29"
+REGEX_ACCURATE_STRING_ORIGINAL = r"(alert|on\w+|prompt|function(\%20|\%09|\%0A|\+)+\w+)(\%20|\%09|\%0A|\+)*(\%28)(\%20|\%09|\%0A|\+)*((\%27|\%2B|\d|\w)((\%2C)?(\%20|\%09|\%0A|\+)*(\%27|\%2B|\d|\w)*)*)*(\%20|\%09|\%0A|\+)*\%29"
 REGEX_ACCURATE_STRING = REGEX_ACCURATE_STRING_ORIGINAL
 # print(REGEX_ACCURATE_STRING)
 
@@ -171,7 +171,6 @@ def get_http_request(packet):
             http_layer = HTTPRequest(packet[Raw].load)
             return http_layer
         except:
-            raise
             return None
     else:
         return None
@@ -186,6 +185,8 @@ def get_http_info(packet):
         # path = http_request.fields["Path"]
         path = http_request.Path
         host = http_request.Host
+        if not host:
+            host=b''
         url = host + path
         return path, url, method
     except:

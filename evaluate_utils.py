@@ -2,20 +2,27 @@ from abc import abstractmethod
 import logging
 import os
 from scapy.all import sniff, wrpcap
-from firewall import check_xss, get_http_info, match_regex_csv, accurate_regex_no_decode
+from firewall import (
+    check_xss,
+    get_http_info,
+    match_regex_csv,
+    accurate_regex_no_decode,
+    get_http_request,
+)
 import time
 import urllib.parse
 import pandas as pd
 
 
 class Evaluate:
-    SUMMARY_FREQ = 500
+    SUMMARY_FREQ = 50000
 
     def __init__(self, filenames):
         self.filenames = filenames
         self.count = 0
         self.detected = 0
         self.times = []
+        self.http_count = 0
 
     def evaluate(self):
         for filename in self.filenames:
@@ -41,6 +48,8 @@ class Evaluate:
         if src:
             self.detected += 1
         self.count += 1
+        if get_http_request(packet):
+            self.http_count += 1
         if src or self.count % self.SUMMARY_FREQ == 0:
             self.summary()
         if src:
@@ -72,7 +81,8 @@ class Evaluate_FP(Evaluate):
             return
 
     def summary(self):
-        print(f"FP {self.detected}/{self.count} packets")
+        # print(f"FP {self.detected}/{self.count} packets out of{}")
+        print(f"DETECTED:{self.detected}, HTTP:{self.http_count},TOTAL:{self.count}")
 
 
 class Evaluate_Positives(Evaluate):
@@ -97,7 +107,8 @@ class Evaluate_Positives(Evaluate):
                 self.payload_history.add(result.fields)
             else:
                 print("Duplicate payload detected.")
-
+        else:
+            print(http_res)
     def summary(self):
         print(
             f"Detected {len(self.payload_history)}/{self.attack_count} attack packets out of total {self.count} packets "
@@ -131,7 +142,13 @@ def predict_bleach(payload):
     return payload == bleach.clean(payload, strip=True)
 
 
+def get_safe_timestr():
+    return time.strftime("%Y-%m-%d-%H-%M-%S")
+
+
 def evaluate_fn_calls(times):
+    with open(f"{get_safe_timestr()}.txt", "w") as f:
+        f.write(str(times))
     times = pd.Series(times)
     print(times.describe().apply("{0:.6f}".format))
     print("Total time", times.sum())
